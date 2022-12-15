@@ -7,6 +7,11 @@ FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
+ENV FORCE_CUDA="1"
+ENV CUDA_HOME=/usr/local/cuda
+
+RUN rm /etc/apt/sources.list.d/cuda.list
+RUN rm /etc/apt/sources.list.d/nvidia-ml.list
 
 RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
     && apt-get clean \
@@ -19,16 +24,13 @@ RUN pip install mmsegmentation==0.14.1
 
 # Install MMDetection3D
 RUN conda clean --all
-WORKDIR ../
 ENV FORCE_CUDA="1"
 ARG TORCH_CUDA_ARCH_LIST="Volta;Turing;Ampere"
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
-RUN pip install -r requirements/build.txt
-RUN pip install --no-cache-dir -e .
-# removed -e
 
 RUN pip install ipdb
 RUN pip install numba==0.48
+RUN pip install wandb
 
 # uninstall pycocotools installed by nuscenes-devkit and reinstall mmpycocotools
 RUN conda install cython

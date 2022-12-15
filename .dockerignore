@@ -2,3 +2,5 @@ venv/
 venv/*
 data/
 data/*
+*.sif
+work_dirs/*
