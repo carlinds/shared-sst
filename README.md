@@ -15,6 +15,10 @@ pip install -r requirements/build.txt
 pip install --no-cache-dir -e .
 ```
 
+Launch an interactive session on a GPU-node on Alvis:
+`srun -p alvis -A SNIC2022-5-184 --nodes 1 --gpus-per-node=V100:1 --time 1-00:00:00 --pty /bin/bash`
+
+
 ### Training models
 The training procedure is the same as the one in SST. Please refer to `./tools/train.py` or `./tools/dist_train.sh` for details.
 
