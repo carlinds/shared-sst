@@ -20,7 +20,7 @@ data_root = "./data/nuscenes/"
 # Input modality for nuScenes dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
-    use_lidar=True, use_camera=False, use_radar=False, use_map=False, use_external=False
+    use_lidar=True, use_camera=True, use_radar=False, use_map=False, use_external=False
 )
 file_client_args = dict(backend="disk")
 # Uncomment the following if use ceph or other file clients.
@@ -33,6 +33,7 @@ file_client_args = dict(backend="disk")
 #         'data/nuscenes/': 's3://nuscenes/nuscenes/'
 #     }))
 train_pipeline = [
+    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
@@ -62,9 +63,10 @@ train_pipeline = [
     dict(type="ObjectNameFilter", classes=class_names),
     dict(type="PointShuffle"),
     dict(type="DefaultFormatBundle3D", class_names=class_names),
-    dict(type="Collect3D", keys=["points", "gt_bboxes_3d", "gt_labels_3d"]),
+    dict(type="Collect3D", keys=["img", "points", "gt_bboxes_3d", "gt_labels_3d"]),
 ]
 test_pipeline = [
+    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
@@ -98,13 +100,14 @@ test_pipeline = [
             dict(
                 type="DefaultFormatBundle3D", class_names=class_names, with_label=False
             ),
-            dict(type="Collect3D", keys=["points"]),
+            dict(type="Collect3D", keys=["img", "points"]),
         ],
     ),
 ]
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
 eval_pipeline = [
+    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
@@ -122,7 +125,7 @@ eval_pipeline = [
         test_mode=True,
     ),
     dict(type="DefaultFormatBundle3D", class_names=class_names, with_label=False),
-    dict(type="Collect3D", keys=["points"]),
+    dict(type="Collect3D", keys=["img", "points"]),
 ]
 
 data = dict(
