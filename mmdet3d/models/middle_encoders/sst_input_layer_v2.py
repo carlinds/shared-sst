@@ -285,7 +285,7 @@ class SSTInputLayerV2(nn.Module):
 
         use_image_window_partitioning = True
         if use_image_window_partitioning:
-            voxel_coors = voxel_com_2d_coords
+            voxel_coors = voxel_coors[is_voxel_com_in_image, :]
             voxel_feats = voxel_feats[is_voxel_com_in_image, :]
             # self.window_shape = window_shape_image
             self.window_shape = window_shape_lidar
@@ -302,7 +302,9 @@ class SSTInputLayerV2(nn.Module):
             voxel_coors = voxel_coors[shuffle_inds]
             original_index = original_index[shuffle_inds]
 
-        voxel_info = self.window_partition(voxel_coors)
+        # voxel_info = self.window_partition(voxel_coors)
+        voxel_com_2d_coords = voxel_com_2d_coords.long()
+        voxel_info = self.window_partition(voxel_com_2d_coords)
         voxel_info["voxel_feats"] = voxel_feats
         voxel_info["voxel_coors"] = voxel_coors
         voxel_info["original_index"] = original_index

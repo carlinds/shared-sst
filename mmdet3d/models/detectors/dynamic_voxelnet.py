@@ -54,7 +54,6 @@ class DynamicVoxelNet(VoxelNet):
 
     def extract_feat(self, points, img_metas):
         """Extract features from points."""
-        import matplotlib.pyplot as plt
 
         voxels, coors = self.voxelize(points)  # [Batch, Z, Y, X]
         batch_size = coors[-1, 0].item() + 1
@@ -74,16 +73,6 @@ class DynamicVoxelNet(VoxelNet):
             )
         else:
             voxel_features, feature_coors = self.voxel_encoder(voxels, coors)
-
-            fig, axs = plt.subplots(1, 3, figsize=(25, 10))
-            axs[0].set_title("Points")
-            axs[0].plot(points[0].cpu()[:, 0], -points[0].cpu()[:, 1], ".")
-            axs[1].set_title("Coors")
-            axs[1].plot(coors.cpu()[:, 3], -coors.cpu()[:, 2], ".")
-            axs[2].set_title("Feature coors")
-            axs[2].plot(feature_coors.cpu()[:, 3], -feature_coors.cpu()[:, 2], ".")
-            plt.savefig("extract_feat.png")
-
             x = self.middle_encoder(
                 voxel_features, feature_coors, points, coors, img_metas, batch_size
             )
