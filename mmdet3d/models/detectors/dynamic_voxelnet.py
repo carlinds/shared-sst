@@ -8,21 +8,22 @@ from .voxelnet import VoxelNet
 
 @DETECTORS.register_module()
 class DynamicVoxelNet(VoxelNet):
-    r"""VoxelNet using `dynamic voxelization <https://arxiv.org/abs/1910.06528>`_.
-    """
+    r"""VoxelNet using `dynamic voxelization <https://arxiv.org/abs/1910.06528>`_."""
 
-    def __init__(self,
-                 voxel_layer,
-                 voxel_encoder,
-                 middle_encoder,
-                 backbone,
-                 neck=None,
-                 bbox_head=None,
-                 train_cfg=None,
-                 test_cfg=None,
-                 pretrained=None,
-                 init_cfg=None,
-                 freeze=None):
+    def __init__(
+        self,
+        voxel_layer,
+        voxel_encoder,
+        middle_encoder,
+        backbone,
+        neck=None,
+        bbox_head=None,
+        train_cfg=None,
+        test_cfg=None,
+        pretrained=None,
+        init_cfg=None,
+        freeze=None,
+    ):
         super(DynamicVoxelNet, self).__init__(
             voxel_layer=voxel_layer,
             voxel_encoder=voxel_encoder,
@@ -33,10 +34,13 @@ class DynamicVoxelNet(VoxelNet):
             train_cfg=train_cfg,
             test_cfg=test_cfg,
             pretrained=pretrained,
-            init_cfg=init_cfg)
+            init_cfg=init_cfg,
+        )
         self.freeze = freeze
         if self.freeze:
-            assert type(self.freeze) == list, "The freeze input should be a list of the blocks to freeze"
+            assert (
+                type(self.freeze) == list
+            ), "The freeze input should be a list of the blocks to freeze"
             # turn of voxel_encoder
             for param in self.voxel_encoder.parameters():
                 param.requires_grad = False
@@ -48,17 +52,41 @@ class DynamicVoxelNet(VoxelNet):
                     for param in block.parameters():
                         param.requires_grad = False
 
-
     def extract_feat(self, points, img_metas):
         """Extract features from points."""
-        voxels, coors = self.voxelize(points)
+        import matplotlib.pyplot as plt
+
+        voxels, coors = self.voxelize(points)  # [Batch, Z, Y, X]
         batch_size = coors[-1, 0].item() + 1
         if self.voxel_encoder.return_gt_points:
-            voxel_features, feature_coors, low_level_point_feature, indices = self.voxel_encoder(voxels, coors)
-            x = self.middle_encoder(voxel_features, feature_coors, low_level_point_feature, indices, batch_size)
+            (
+                voxel_features,
+                feature_coors,
+                low_level_point_feature,
+                indices,
+            ) = self.voxel_encoder(voxels, coors)
+            x = self.middle_encoder(
+                voxel_features,
+                feature_coors,
+                low_level_point_feature,
+                indices,
+                batch_size,
+            )
         else:
             voxel_features, feature_coors = self.voxel_encoder(voxels, coors)
-            x = self.middle_encoder(voxel_features, feature_coors, batch_size)
+
+            fig, axs = plt.subplots(1, 3, figsize=(25, 10))
+            axs[0].set_title("Points")
+            axs[0].plot(points[0].cpu()[:, 0], -points[0].cpu()[:, 1], ".")
+            axs[1].set_title("Coors")
+            axs[1].plot(coors.cpu()[:, 3], -coors.cpu()[:, 2], ".")
+            axs[2].set_title("Feature coors")
+            axs[2].plot(feature_coors.cpu()[:, 3], -feature_coors.cpu()[:, 2], ".")
+            plt.savefig("extract_feat.png")
+
+            x = self.middle_encoder(
+                voxel_features, feature_coors, points, coors, img_metas, batch_size
+            )
         x = self.backbone(x)
         if self.with_neck:
             x = self.neck(x)
@@ -83,7 +111,7 @@ class DynamicVoxelNet(VoxelNet):
         points = torch.cat(points, dim=0)
         coors_batch = []
         for i, coor in enumerate(coors):
-            coor_pad = F.pad(coor, (1, 0), mode='constant', value=i)
+            coor_pad = F.pad(coor, (1, 0), mode="constant", value=i)
             coors_batch.append(coor_pad)
         coors_batch = torch.cat(coors_batch, dim=0)
         return points, coors_batch
@@ -103,13 +131,24 @@ class DynamicVoxelNet(VoxelNet):
 
         occupied = None
         if "pred_occupied" in pred_dict:
-            occupied = -torch.ones((batch_size, vx, vy), dtype=torch.long, device=pred_dict["pred_occupied"].device)
+            occupied = -torch.ones(
+                (batch_size, vx, vy),
+                dtype=torch.long,
+                device=pred_dict["pred_occupied"].device,
+            )
             index = (voxel_coors[:, 0], voxel_coors[:, 3], voxel_coors[:, 2])  # b ,x, y
             unmasked_index = (
-                unmasked_voxel_coors[:, 0], unmasked_voxel_coors[:, 3], unmasked_voxel_coors[:, 2])
-            gt_occupied = pred_dict["gt_occupied"].long()+1  # 1 -> real voxel, 2 -> fake voxel
+                unmasked_voxel_coors[:, 0],
+                unmasked_voxel_coors[:, 3],
+                unmasked_voxel_coors[:, 2],
+            )
+            gt_occupied = (
+                pred_dict["gt_occupied"].long() + 1
+            )  # 1 -> real voxel, 2 -> fake voxel
             occupied[index] = 2 * gt_occupied  # 2 -> real voxel, 4 -> fake voxel
-            occupied[unmasked_index] -= 2  # 0 -> unmasked voxels 2 -> masked voxel, 4 -> fake voxel
+            occupied[
+                unmasked_index
+            ] -= 2  # 0 -> unmasked voxels 2 -> masked voxel, 4 -> fake voxel
             occupied[index] += (torch.sigmoid(pred_dict["pred_occupied"]) + 0.5).long()
             # 0 -> unmasked voxel predicted as real,
             # 1 -> unmasked voxel predicted as fake,
@@ -122,44 +161,108 @@ class DynamicVoxelNet(VoxelNet):
         diff_num_points = None
         if "pred_num_points_masked" in pred_dict:
             device = pred_dict["pred_num_points_masked"].device
-            gt_num_points = torch.zeros((batch_size, vx, vy), dtype=torch.long, device=device)
-            diff_num_points = torch.zeros((batch_size, vx, vy), dtype=torch.float, device=device)
-            index = (masked_voxel_coors[:, 0], masked_voxel_coors[:, 3], masked_voxel_coors[:, 2])  # b ,x, y
+            gt_num_points = torch.zeros(
+                (batch_size, vx, vy), dtype=torch.long, device=device
+            )
+            diff_num_points = torch.zeros(
+                (batch_size, vx, vy), dtype=torch.float, device=device
+            )
+            index = (
+                masked_voxel_coors[:, 0],
+                masked_voxel_coors[:, 3],
+                masked_voxel_coors[:, 2],
+            )  # b ,x, y
             pred_num_points_masked = pred_dict["pred_num_points_masked"]
             gt_num_points_masked = pred_dict["gt_num_points_masked"]
             gt_num_points[index] = gt_num_points_masked.long()
-            diff_num_points[index] = gt_num_points_masked.float()-pred_num_points_masked
+            diff_num_points[index] = (
+                gt_num_points_masked.float() - pred_num_points_masked
+            )
         if "pred_num_points_unmasked" in pred_dict:
             device = pred_dict["pred_num_points_unmasked"].device
-            gt_num_points = torch.zeros((batch_size, vx, vy), dtype=torch.long, device=device) if gt_num_points is None else gt_num_points
-            diff_num_points = torch.zeros((batch_size, vx, vy), dtype=torch.float, device=device) if diff_num_points is None else diff_num_points
-            index = (unmasked_voxel_coors[:, 0], unmasked_voxel_coors[:, 3], unmasked_voxel_coors[:, 2])  # b ,x, y
+            gt_num_points = (
+                torch.zeros((batch_size, vx, vy), dtype=torch.long, device=device)
+                if gt_num_points is None
+                else gt_num_points
+            )
+            diff_num_points = (
+                torch.zeros((batch_size, vx, vy), dtype=torch.float, device=device)
+                if diff_num_points is None
+                else diff_num_points
+            )
+            index = (
+                unmasked_voxel_coors[:, 0],
+                unmasked_voxel_coors[:, 3],
+                unmasked_voxel_coors[:, 2],
+            )  # b ,x, y
             pred_num_points_unmasked = pred_dict["pred_num_points_unmasked"]
             gt_num_points_unmasked = pred_dict["gt_num_points_unmasked"]
             gt_num_points[index] = gt_num_points_unmasked.long()
-            diff_num_points[index] = gt_num_points_unmasked.float() - pred_num_points_unmasked
+            diff_num_points[index] = (
+                gt_num_points_unmasked.float() - pred_num_points_unmasked
+            )
 
         points = []
         batch = []
         if "pred_points_masked" in pred_dict:
-            pred_points_masked = pred_dict["pred_points_masked"].clone()  # M, num_chamfer_points, 3
+            pred_points_masked = pred_dict[
+                "pred_points_masked"
+            ].clone()  # M, num_chamfer_points, 3
             M, n, C = pred_points_masked.shape
-            x_shift = (masked_voxel_coors[:, 3].type_as(pred_points_masked) * self.voxel_encoder.vx + self.voxel_encoder.x_offset)  # M
-            y_shift = (masked_voxel_coors[:, 2].type_as(pred_points_masked) * self.voxel_encoder.vy + self.voxel_encoder.y_offset)  # M
-            z_shift = (masked_voxel_coors[:, 1].type_as(pred_points_masked) * self.voxel_encoder.vz + self.voxel_encoder.z_offset)  # M
-            shift = torch.cat([x_shift.unsqueeze(-1), y_shift.unsqueeze(-1), z_shift.unsqueeze(-1)], dim=1).view(-1, 1, 3)
-            pred_points_masked[..., 0] = pred_points_masked[..., 0] * self.voxel_encoder.vx / 2  # [-1, 1] -> [voxel_encoder.vx/2, voxel_encoder.vx/2]
-            pred_points_masked[..., 1] = pred_points_masked[..., 1] * self.voxel_encoder.vy / 2  # [-1, 1] -> [voxel_encoder.vy/2, voxel_encoder.vy/2]
-            pred_points_masked[..., 2] = pred_points_masked[..., 2] * self.voxel_encoder.vz / 2  # [-1, 1] -> [voxel_encoder.vz/2, voxel_encoder.vz/2]
+            x_shift = (
+                masked_voxel_coors[:, 3].type_as(pred_points_masked)
+                * self.voxel_encoder.vx
+                + self.voxel_encoder.x_offset
+            )  # M
+            y_shift = (
+                masked_voxel_coors[:, 2].type_as(pred_points_masked)
+                * self.voxel_encoder.vy
+                + self.voxel_encoder.y_offset
+            )  # M
+            z_shift = (
+                masked_voxel_coors[:, 1].type_as(pred_points_masked)
+                * self.voxel_encoder.vz
+                + self.voxel_encoder.z_offset
+            )  # M
+            shift = torch.cat(
+                [x_shift.unsqueeze(-1), y_shift.unsqueeze(-1), z_shift.unsqueeze(-1)],
+                dim=1,
+            ).view(-1, 1, 3)
+            pred_points_masked[..., 0] = (
+                pred_points_masked[..., 0] * self.voxel_encoder.vx / 2
+            )  # [-1, 1] -> [voxel_encoder.vx/2, voxel_encoder.vx/2]
+            pred_points_masked[..., 1] = (
+                pred_points_masked[..., 1] * self.voxel_encoder.vy / 2
+            )  # [-1, 1] -> [voxel_encoder.vy/2, voxel_encoder.vy/2]
+            pred_points_masked[..., 2] = (
+                pred_points_masked[..., 2] * self.voxel_encoder.vz / 2
+            )  # [-1, 1] -> [voxel_encoder.vz/2, voxel_encoder.vz/2]
             batch.append(masked_voxel_coors[:, 0].view(-1, 1).repeat(1, n).view(-1))
             points.append((pred_points_masked + shift).reshape(-1, 3))
         if "pred_points_unmasked" in pred_dict:
-            pred_points_unmasked = pred_dict["pred_points_unmasked"]  # N-M, num_chamfer_points, 3
+            pred_points_unmasked = pred_dict[
+                "pred_points_unmasked"
+            ]  # N-M, num_chamfer_points, 3
             M, n, C = pred_points_unmasked.shape
-            x_shift = unmasked_voxel_coors[:, 3].type_as(pred_points_unmasked) * self.voxel_encoder.vx + self.voxel_encoder.x_offset  # M
-            y_shift = unmasked_voxel_coors[:, 2].type_as(pred_points_unmasked) * self.voxel_encoder.vy + self.voxel_encoder.y_offset  # M
-            z_shift = unmasked_voxel_coors[:, 1].type_as(pred_points_unmasked) * self.voxel_encoder.vz + self.voxel_encoder.z_offset  # M
-            shift = torch.cat([x_shift.unsqueeze(-1), y_shift.unsqueeze(-1), z_shift.unsqueeze(-1)], dim=1).view(-1, 1, 3)
+            x_shift = (
+                unmasked_voxel_coors[:, 3].type_as(pred_points_unmasked)
+                * self.voxel_encoder.vx
+                + self.voxel_encoder.x_offset
+            )  # M
+            y_shift = (
+                unmasked_voxel_coors[:, 2].type_as(pred_points_unmasked)
+                * self.voxel_encoder.vy
+                + self.voxel_encoder.y_offset
+            )  # M
+            z_shift = (
+                unmasked_voxel_coors[:, 1].type_as(pred_points_unmasked)
+                * self.voxel_encoder.vz
+                + self.voxel_encoder.z_offset
+            )  # M
+            shift = torch.cat(
+                [x_shift.unsqueeze(-1), y_shift.unsqueeze(-1), z_shift.unsqueeze(-1)],
+                dim=1,
+            ).view(-1, 1, 3)
             batch.append(unmasked_voxel_coors[:, 0].view(-1, 1).repeat(1, n).view(-1))
             points.append((pred_points_unmasked + shift).reshape(-1, 3))
         points = torch.cat(points, dim=0) if points else None
@@ -172,7 +275,11 @@ class DynamicVoxelNet(VoxelNet):
             "points": points,
             "points_batch": batch,
             "gt_points": pred_dict["gt_points"],
-            "gt_points_batch":  pred_dict["gt_point_coors"][:, 0],
+            "gt_points_batch": pred_dict["gt_point_coors"][:, 0],
             "point_cloud_range": self.voxel_encoder.point_cloud_range,
-            "voxel_shape": (self.voxel_encoder.vx, self.voxel_encoder.vy, self.voxel_encoder.vz)
+            "voxel_shape": (
+                self.voxel_encoder.vx,
+                self.voxel_encoder.vy,
+                self.voxel_encoder.vz,
+            ),
         }

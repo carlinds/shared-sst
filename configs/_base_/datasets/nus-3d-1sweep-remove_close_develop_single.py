@@ -33,7 +33,7 @@ file_client_args = dict(backend="disk")
 #         'data/nuscenes/': 's3://nuscenes/nuscenes/'
 #     }))
 train_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
+    dict(type="LoadMultiViewImageFromFiles", to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
@@ -51,22 +51,22 @@ train_pipeline = [
         test_mode=True,
     ),
     dict(type="LoadAnnotations3D", with_bbox_3d=True, with_label_3d=True),
-    dict(
-        type="GlobalRotScaleTrans",
-        rot_range=[-0.3925, 0.3925],
-        scale_ratio_range=[0.95, 1.05],
-        translation_std=[0, 0, 0],
-    ),
-    dict(type="RandomFlip3D", flip_ratio_bev_horizontal=0.5),
+    # dict(
+    #     type="GlobalRotScaleTrans",
+    #     rot_range=[-0.3925, 0.3925],
+    #     scale_ratio_range=[0.95, 1.05],
+    #     translation_std=[0, 0, 0],
+    # ),
+    # dict(type="RandomFlip3D", flip_ratio_bev_horizontal=0.5),
     dict(type="PointsRangeFilter", point_cloud_range=point_cloud_range),
     dict(type="ObjectRangeFilter", point_cloud_range=point_cloud_range),
     dict(type="ObjectNameFilter", classes=class_names),
-    dict(type="PointShuffle"),
+    # dict(type="PointShuffle"),
     dict(type="DefaultFormatBundle3D", class_names=class_names),
     dict(type="Collect3D", keys=["img", "points", "gt_bboxes_3d", "gt_labels_3d"]),
 ]
 test_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
+    dict(type="LoadMultiViewImageFromFiles", to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
@@ -107,7 +107,7 @@ test_pipeline = [
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
 eval_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
+    dict(type="LoadMultiViewImageFromFiles", to_float32=True),
     dict(
         type="LoadPointsFromFile",
         coord_type="LIDAR",
