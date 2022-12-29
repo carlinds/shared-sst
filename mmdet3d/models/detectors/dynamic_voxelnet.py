@@ -73,8 +73,13 @@ class DynamicVoxelNet(VoxelNet):
             )
         else:
             voxel_features, feature_coors = self.voxel_encoder(voxels, coors)
+            voxel_mean, _ = self.voxel_encoder.cluster_scatter(voxels, coors)
             x = self.middle_encoder(
-                voxel_features, feature_coors, points, coors, img_metas, batch_size
+                voxel_features,
+                feature_coors,
+                voxel_mean,
+                img_metas,
+                batch_size,
             )
         x = self.backbone(x)
         if self.with_neck:

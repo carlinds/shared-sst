@@ -1,6 +1,6 @@
 _base_ = [
     "../_base_/models/sst_base.py",
-    "../_base_/datasets/nus-3d-1sweep-remove_close_develop_single.py",
+    "../_base_/datasets/nus-3d-1sweep-remove_close_multi_modal_input.py",
     "../_base_/schedules/cosine_2x.py",
     "../_base_/default_runtime.py",
 ]
@@ -90,8 +90,8 @@ checkpoint_config = dict(interval=6)
 
 fp16 = dict(loss_scale=32.0)
 data = dict(
-    samples_per_gpu=1,
-    workers_per_gpu=1,
+    samples_per_gpu=4,
+    workers_per_gpu=4,
 )
 
 workflow = [

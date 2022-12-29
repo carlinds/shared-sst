@@ -20,6 +20,9 @@ import pickle as pkl
 import os
 import copy
 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+
 
 @MIDDLE_ENCODERS.register_module()
 class SSTInputLayerV2(nn.Module):
@@ -62,12 +65,7 @@ class SSTInputLayerV2(nn.Module):
 
     @auto_fp16(apply_to=("voxel_feat",))
     def forward(
-        self,
-        voxel_feats,
-        voxel_coors,
-        voxel_mean,
-        img_metas,
-        batch_size=None,
+        self, voxel_feats, voxel_coors, points, coors, img_metas, batch_size=None
     ):
         """
         Args:
@@ -93,47 +91,204 @@ class SSTInputLayerV2(nn.Module):
             points_2d[:, 1] /= points_2d[:, 2]
             return points_2d
 
-        def points_in_image(points, image_size=(1600, 900)):
-            return (
-                (0 <= points[:, 0])
-                & (points[:, 0] <= image_size[0])
-                & (0 <= points[:, 1])
-                & (points[:, 1] <= image_size[1])
-            )
+        # Lidar points
+        lidar_points = points[0].clone()
 
         # Get projection matrix
-        proj_mats = [
-            torch.Tensor(img_meta["lidar2img"][0].reshape(4, 4)).to(voxel_mean.device)
-            for img_meta in img_metas
+        proj_mat = img_metas[0]["lidar2img"][0]
+        proj_mat = torch.Tensor(proj_mat.reshape(4, 4)).to(lidar_points.device)
+
+        # Project points to 2d
+        points_2d = proj_points_to_2d(lidar_points, proj_mat)
+        is_point_in_image = [
+            (0 <= p[0] <= 1600) and (0 <= p[1] <= 900) for p in points_2d
         ]
+        points_2d_in_image = points_2d[is_point_in_image, :]
+        points_3d_in_image = lidar_points[is_point_in_image, :]
 
-        # Find batch ranges
-        batch_start_inds = [
-            torch.where(voxel_coors[:, 0] == b)[0][0] for b in range(batch_size)
+        # Compute center of mass for each voxel
+        voxel_com = torch.zeros((voxel_coors.shape[0], 3), device=voxel_coors.device)
+        for i in range(voxel_coors.shape[0]):
+            voxel_coord = voxel_coors[i, :]
+            voxel_points = lidar_points[
+                (coors[:, 1] == voxel_coord[1])
+                & (coors[:, 2] == voxel_coord[2])
+                & (coors[:, 3] == voxel_coord[3]),
+                :,
+            ]
+            voxel_com[i, :] = voxel_points.mean(dim=0)[:3]
+
+        # Project center of mass to 2d
+        voxel_com_2d = proj_points_to_2d(voxel_com, proj_mat)
+        is_voxel_com_in_image = [
+            (0 <= p[0] <= 1600) and (0 <= p[1] <= 900) for p in voxel_com_2d
         ]
-        batch_ranges = [
-            (batch_start_inds[b], batch_start_inds[b + 1])
-            for b in range(batch_size - 1)
-        ]
-        batch_ranges.append((batch_start_inds[-1], voxel_coors.shape[0]))
+        voxel_com_2d_in_image = voxel_com_2d[is_voxel_com_in_image, :]
+        voxel_com_3d_in_image = voxel_com[is_voxel_com_in_image, :]
 
-        # Project voxel mean to 2d
-        voxel_mean_2d = torch.zeros_like(voxel_mean)
-        for batch_range, proj_mat in zip(batch_ranges, proj_mats):
-            voxel_mean_2d[batch_range[0] : batch_range[1]] = proj_points_to_2d(
-                voxel_mean[batch_range[0] : batch_range[1]], proj_mat
-            )
+        # Create coordinates in image plane based on projected center of mass
+        window_shape_lidar = (16, 16, 1)
+        window_shape_image = (96, 96, 1)
+        voxel_com_2d_coords = voxel_com_2d_in_image.flip(1).int()
+        voxel_com_2d_coords[:, 0] = 0
+        voxel_com_2d_coords[:, 1] = 0
 
-        # Filter out voxels outside image
-        is_voxel_mean_in_image = points_in_image(voxel_mean_2d)
-        voxel_mean_2d_in_image = voxel_mean_2d[is_voxel_mean_in_image, :]
-        voxel_coors = voxel_coors[is_voxel_mean_in_image, :]
-        voxel_feats = voxel_feats[is_voxel_mean_in_image, :]
+        # debug_plots = False
+        # if debug_plots:
+        #     # Plot 3d points in BEV
+        #     plt.clf()
+        #     plt.scatter(lidar_points[:, 0], lidar_points[:, 1], c="b", s=1)
+        #     plt.axis("equal")
+        #     plt.savefig("debug_plots/lidar_points.png")
 
-        # Create coordinates in image plane based on projected voxel mean
-        voxel_mean_2d_coords = voxel_mean_2d_in_image.flip(1).int()
-        voxel_mean_2d_coords[:, 0] = voxel_coors[:, 0]
-        voxel_mean_2d_coords[:, 1] = 0
+        #     # Plot points in image FOV
+        #     plt.clf()
+        #     plt.scatter(points_3d_in_image[:, 0], points_3d_in_image[:, 1], c="b", s=1)
+        #     plt.axis("equal")
+        #     plt.savefig("debug_plots/lidar_points_in_image_fov.png")
+
+        #     # Plot the points projected to 2d
+        #     img = plt.imread(img_metas[0]["filename"][0])
+        #     plt.clf()
+        #     plt.imshow(img)
+        #     plt.scatter(
+        #         points_2d_in_image[:, 0],
+        #         points_2d_in_image[:, 1],
+        #         c=points_2d_in_image[:, 2],
+        #         cmap="jet",
+        #         s=1,
+        #     )
+        #     plt.savefig("debug_plots/lidar_points_projected_to_2d.png")
+
+        #     # Plot center of mass for each voxel in BEV
+        #     plt.clf()
+        #     plt.scatter(lidar_points[:, 0], lidar_points[:, 1], c="b", s=1)
+        #     plt.scatter(voxel_com[:, 0], voxel_com[:, 1], c="r", s=1)
+        #     plt.axis("equal")
+        #     plt.savefig("debug_plots/voxel_com.png")
+
+        #     # Plot center of mass in image FOV
+        #     plt.clf()
+        #     plt.scatter(
+        #         voxel_com_3d_in_image[:, 0],
+        #         voxel_com_3d_in_image[:, 1],
+        #         c="b",
+        #         s=1,
+        #     )
+        #     plt.axis("equal")
+        #     plt.savefig("debug_plots/voxel_com_in_image_fov.png")
+
+        #     # Plot the center of mass projected to 2d
+        #     plt.clf()
+        #     plt.imshow(img)
+        #     plt.scatter(
+        #         voxel_com_2d_in_image[:, 0],
+        #         voxel_com_2d_in_image[:, 1],
+        #         c=voxel_com_2d_in_image[:, 2],
+        #         cmap="jet",
+        #         s=1,
+        #     )
+        #     plt.savefig("debug_plots/voxel_com_projected_to_2d.png")
+
+        #     # Create list of colors for each unique value in batch_win_inds_shift0
+        #     unique_batch_win_inds = torch.unique(voxel_info["batch_win_inds_shift0"])
+        #     color_map = plt.get_cmap("gist_rainbow")
+        #     plot_colors = [
+        #         color_map(i / len(unique_batch_win_inds))
+        #         for i in range(len(unique_batch_win_inds))
+        #     ]
+        #     random.shuffle(plot_colors)
+
+        #     # Plot voxel coors painted by batch win ind
+        #     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
+        #     for i in range(voxel_coors.shape[0]):
+        #         voxel_coord = voxel_coors[i, :].cpu()
+        #         batch_win_ind = voxel_info["batch_win_inds_shift0"][i]
+        #         color_index = torch.where(unique_batch_win_inds == batch_win_ind)[0]
+        #         ax.set_title("Voxel coors painted by batch win ind")
+        #         ax.plot(
+        #             voxel_coord[3],
+        #             voxel_coord[2],
+        #             ".",
+        #             c=plot_colors[color_index],
+        #         )
+        #         ax.axis("equal")
+        #         ax.xaxis.set_major_locator(MultipleLocator(window_shape_lidar[0]))
+        #         ax.xaxis.set_major_formatter(FormatStrFormatter("%d"))
+        #         ax.yaxis.set_major_locator(MultipleLocator(window_shape_lidar[1]))
+        #         ax.xaxis.grid(True, "major", linewidth=2)
+        #         ax.yaxis.grid(True, "major", linewidth=2)
+        #     fig.savefig("debug_plots/windows_bev.png")
+
+        #     # Compute window partition for plots
+        #     self.window_shape = window_shape_image
+        #     voxel_com_info = self.window_partition(voxel_com_2d_coords)
+        #     self.window_shape = window_shape_lidar
+
+        #     # Create list of colors for each unique value in batch_win_inds_shift0
+        #     unique_batch_win_inds = torch.unique(
+        #         voxel_com_info["batch_win_inds_shift0"]
+        #     )
+        #     color_map = plt.get_cmap("gist_rainbow")
+        #     plot_colors = [
+        #         color_map(i / len(unique_batch_win_inds))
+        #         for i in range(len(unique_batch_win_inds))
+        #     ]
+        #     random.shuffle(plot_colors)
+
+        #     # Plot voxel com coors in 2d painted by batch win ind
+        #     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
+        #     ax.imshow(img)
+        #     for i in range(voxel_com_2d_coords.shape[0]):
+        #         com_coord = voxel_com_2d_coords[i, :]
+        #         batch_win_ind = voxel_com_info["batch_win_inds_shift0"][i]
+        #         color_index = torch.where(unique_batch_win_inds == batch_win_ind)[0]
+        #         ax.set_title(
+        #             "Voxel coors projected to image and painted by batch win ind"
+        #         )
+        #         ax.plot(
+        #             com_coord[3],
+        #             com_coord[2],
+        #             ".",
+        #             c=plot_colors[color_index],
+        #         )
+        #         ax.xaxis.set_major_locator(MultipleLocator(window_shape_image[0]))
+        #         ax.xaxis.set_major_formatter(FormatStrFormatter("%d"))
+        #         ax.yaxis.set_major_locator(MultipleLocator(window_shape_image[1]))
+        #         ax.xaxis.grid(True, "major", linewidth=2)
+        #         ax.yaxis.grid(True, "major", linewidth=2)
+        #     fig.savefig("debug_plots/projected_voxels_windows_image.png")
+
+        #     # Plot voxel coors painted by batch win ind from voxel_com_info
+        #     voxel_coors_in_image = voxel_coors[is_voxel_com_in_image, :]
+        #     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
+        #     for i in range(voxel_coors_in_image.shape[0]):
+        #         voxel_coord = voxel_coors_in_image[i, :].cpu()
+        #         batch_win_ind = voxel_com_info["batch_win_inds_shift0"][i]
+        #         color_index = torch.where(unique_batch_win_inds == batch_win_ind)[0]
+        #         ax.set_title(
+        #             "Voxel coors painted by batch win ind created from window partioning in image space"
+        #         )
+        #         ax.plot(
+        #             voxel_coord[3],
+        #             voxel_coord[2],
+        #             ".",
+        #             c=plot_colors[color_index],
+        #         )
+        #         ax.axis("equal")
+        #         ax.xaxis.set_major_locator(MultipleLocator(window_shape_lidar[0]))
+        #         ax.xaxis.set_major_formatter(FormatStrFormatter("%d"))
+        #         ax.yaxis.set_major_locator(MultipleLocator(window_shape_lidar[1]))
+        #         ax.xaxis.grid(True, "major", linewidth=2)
+        #         ax.yaxis.grid(True, "major", linewidth=2)
+        #     fig.savefig("debug_plots/projected_voxels_windows_bev.png")
+
+        use_image_window_partitioning = True
+        if use_image_window_partitioning:
+            voxel_coors = voxel_coors[is_voxel_com_in_image, :]
+            voxel_feats = voxel_feats[is_voxel_com_in_image, :]
+            # self.window_shape = window_shape_image
+            self.window_shape = window_shape_lidar
 
         original_index = torch.arange(len(voxel_feats), device=voxel_feats.device)
 
@@ -148,8 +303,8 @@ class SSTInputLayerV2(nn.Module):
             original_index = original_index[shuffle_inds]
 
         # voxel_info = self.window_partition(voxel_coors)
-        voxel_mean_2d_coords = voxel_mean_2d_coords.long()
-        voxel_info = self.window_partition(voxel_mean_2d_coords)
+        voxel_com_2d_coords = voxel_com_2d_coords.long()
+        voxel_info = self.window_partition(voxel_com_2d_coords)
         voxel_info["voxel_feats"] = voxel_feats
         voxel_info["voxel_coors"] = voxel_coors
         voxel_info["original_index"] = original_index

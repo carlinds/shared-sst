@@ -8,16 +8,16 @@ log_config = dict(
     hooks=[
         dict(type="TextLoggerHook"),
         dict(type="TensorboardLoggerHook"),
-        # dict(
-        #     type="WandbLoggerHook",
-        #     init_kwargs={
-        #         "project": "shared-sst",
-        #         "entity": "carlinds",
-        #         "group": "baseline",
-        #         "tags": ["foo", "bar"],
-        #     },
-        #     interval=10,
-        # ),
+        dict(
+            type="WandbLoggerHook",
+            init_kwargs={
+                "project": "shared-sst",
+                "entity": "carlinds",
+                "group": "lidar-only-image-grouping",
+                "tags": ["full trainval"],
+            },
+            interval=10,
+        ),
     ],
 )
 # yapf:enable

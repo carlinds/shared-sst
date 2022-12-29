@@ -10,8 +10,8 @@
 
 CONFIG=$1
 GPUS_PER_NODE=4
-REPO_NAME="voxel-mae"
-SINGULARITY_IMAGE="voxel-mae-latest.sif"
+REPO_NAME="shared-sst"
+#SINGULARITY_IMAGE="shared-sst-latest.sif"
 REPO_DIR="/cephyr/users/carlinds/Alvis"
 DATASET_PATH="/mimer/NOBACKUP/groups/snic2021-7-127/eliassv/data"
 
@@ -24,7 +24,7 @@ singularity exec --nv \
     -B $DATASET_PATH:$DATASET_PATH \
     --env WANDB_API_KEY=$WANDB_API_KEY \
     --pwd /$REPO_NAME \
-    $REPO_DIR/$REPO_NAME/$SINGULARITY_IMAGE \
+    $REPO_DIR/voxel-mae/voxel-mae-latest.sif \
     bash tools/dist_train.sh $CONFIG $GPUS_PER_NODE
 
 #
