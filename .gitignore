@@ -147,4 +147,4 @@ mmdet3d/core/evaluation/waymo_utils/compute_detection_metrics_main
 
 wandb/
 
-./Trash-0/*
+.Trash-0/
