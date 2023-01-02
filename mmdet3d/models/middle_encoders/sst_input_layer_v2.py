@@ -101,37 +101,35 @@ class SSTInputLayerV2(nn.Module):
                 & (points[:, 1] <= image_size[1])
             )
 
-        # Get projection matrix
-        proj_mats = [
-            torch.Tensor(img_meta["lidar2img"][0].reshape(4, 4)).to(voxel_mean.device)
-            for img_meta in img_metas
-        ]
+        IMAGE_SIZE = (1600, 900)
+        CAMERA_ORDER = [0, 1, 5, 3, 4, 2]
 
-        # Find batch ranges
-        batch_start_inds = [
-            torch.where(voxel_coors[:, 0] == b)[0][0] for b in range(batch_size)
-        ]
-        batch_ranges = [
-            (batch_start_inds[b], batch_start_inds[b + 1])
-            for b in range(batch_size - 1)
-        ]
-        batch_ranges.append((batch_start_inds[-1], voxel_coors.shape[0]))
+        # Find batch indices
+        batch_indices = [torch.where(voxel_coors[:, 0] == batch_idx)[0][:] for batch_idx in range(batch_size)]
 
-        # Project voxel mean to 2d
+        # Project voxel means to 2d (multiple cameras)
+        assert voxel_mean.shape[0] == sum([len(batch_idx) for batch_idx in batch_indices])
         voxel_mean_2d = torch.zeros_like(voxel_mean)
-        for batch_range, proj_mat in zip(batch_ranges, proj_mats):
-            voxel_mean_2d[batch_range[0] : batch_range[1]] = proj_points_to_2d(
-                voxel_mean[batch_range[0] : batch_range[1]], proj_mat
-            )
+        for batch_idx, batch_idx_list in enumerate(batch_indices):
+            for cam_idx in CAMERA_ORDER:
+                # Get projection matrix for current batch and camera
+                proj_mat = torch.Tensor(img_metas[batch_idx]["lidar2img"][cam_idx].reshape(4, 4)).to(voxel_mean.device)
+            
+                # Project all points in batch to current camera
+                projected_voxel_means = proj_points_to_2d(voxel_mean[batch_idx_list, :], proj_mat)
+                
+                # Filter out points that are not in image
+                is_projected_voxel_mean_in_image = points_in_image(projected_voxel_means)
+                projected_voxel_means = projected_voxel_means[is_projected_voxel_mean_in_image, :]
+                voxel_indices = batch_idx_list[is_projected_voxel_mean_in_image]
 
-        # Filter out voxels outside image
-        is_voxel_mean_in_image = points_in_image(voxel_mean_2d)
-        voxel_mean_2d_in_image = voxel_mean_2d[is_voxel_mean_in_image, :]
-        voxel_coors = voxel_coors[is_voxel_mean_in_image, :]
-        voxel_feats = voxel_feats[is_voxel_mean_in_image, :]
+                # Shift points by the width of the image to separate cameras
+                projected_voxel_means[:, 0] = projected_voxel_means[:, 0] + cam_idx * IMAGE_SIZE[0]
+                voxel_mean_2d[voxel_indices, :] = projected_voxel_means
+
 
         # Create coordinates in image plane based on projected voxel mean
-        voxel_mean_2d_coords = voxel_mean_2d_in_image.flip(1).int()
+        voxel_mean_2d_coords = voxel_mean_2d.flip(1).int()
         voxel_mean_2d_coords[:, 0] = voxel_coors[:, 0]
         voxel_mean_2d_coords[:, 1] = 0
 
@@ -139,6 +137,7 @@ class SSTInputLayerV2(nn.Module):
 
         self.set_drop_info()
         voxel_coors = voxel_coors.long()
+        voxel_mean_2d_coords = voxel_mean_2d_coords.long()
 
         if self.shuffle_voxels:
             # shuffle the voxels to make the drop process uniform.
@@ -148,12 +147,10 @@ class SSTInputLayerV2(nn.Module):
             original_index = original_index[shuffle_inds]
 
         # voxel_info = self.window_partition(voxel_coors)
-        voxel_mean_2d_coords = voxel_mean_2d_coords.long()
         voxel_info = self.window_partition(voxel_mean_2d_coords)
         voxel_info["voxel_feats"] = voxel_feats
         voxel_info["voxel_coors"] = voxel_coors
         voxel_info["original_index"] = original_index
-
         voxel_info = self.drop_voxel(
             voxel_info, 2
         )  # voxel_info is updated in this function
