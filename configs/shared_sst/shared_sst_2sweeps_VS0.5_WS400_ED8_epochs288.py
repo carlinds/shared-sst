@@ -6,7 +6,7 @@ _base_ = [
 ]
 
 voxel_size = (0.5, 0.5, 8)
-window_shape = (200, 200, 1)
+window_shape = (400, 400, 1)
 point_cloud_range = [-50, -50, -5, 50, 50, 3]
 encoder_blocks = 8
 drop_info_training = {
