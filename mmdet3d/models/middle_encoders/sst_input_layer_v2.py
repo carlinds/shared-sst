@@ -125,7 +125,7 @@ class SSTInputLayerV2(nn.Module):
 
                 # Shift points by the width of the image to separate cameras
                 projected_voxel_means[:, 0] = projected_voxel_means[:, 0] + cam_idx * IMAGE_SIZE[0]
-                voxel_mean_2d[voxel_indices, :] = projected_voxel_means
+                voxel_mean_2d[voxel_indices, :] = projected_voxel_means.float()
 
 
         # Create coordinates in image plane based on projected voxel mean

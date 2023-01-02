@@ -86,7 +86,7 @@ model = dict(
     ),
 )
 # runtime settings
-runner = dict(type="EpochBasedRunner", max_epochs=50)
+runner = dict(type="EpochBasedRunner", max_epochs=288)
 evaluation = dict(interval=12)
 checkpoint_config = dict(interval=6)
 
