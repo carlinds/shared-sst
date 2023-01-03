@@ -14,16 +14,14 @@ drop_info_training = {
     1: {"max_tokens": 60, "drop_range": (30, 60)},
     2: {"max_tokens": 100, "drop_range": (60, 100)},
     3: {"max_tokens": 200, "drop_range": (100, 200)},
-    4: {"max_tokens": 400, "drop_range": (200, 400)},
-    5: {"max_tokens": 1000, "drop_range": (400, 100000)},
+    4: {"max_tokens": 250, "drop_range": (200, 100000)},
 }
 drop_info_test = {
     0: {"max_tokens": 30, "drop_range": (0, 30)},
     1: {"max_tokens": 60, "drop_range": (30, 60)},
     2: {"max_tokens": 100, "drop_range": (60, 100)},
     3: {"max_tokens": 200, "drop_range": (100, 200)},
-    4: {"max_tokens": 400, "drop_range": (200, 400)},
-    5: {"max_tokens": 1024, "drop_range": (400, 100000)},  # 32*32=1024
+    4: {"max_tokens": 256, "drop_range": (200, 100000)},  # 16*16=256
 }
 drop_info = (drop_info_training, drop_info_test)
 shifts_list = [(0, 0), (window_shape[0] // 2, window_shape[1] // 2)]
@@ -48,9 +46,16 @@ model = dict(
         norm_cfg=dict(type="naiveSyncBN1d", eps=1e-3, momentum=0.01),
     ),
     middle_encoder=dict(
-        type="SSTInputLayerV2",
+        type="SharedSSTInputLayer",
         window_shape=window_shape,
-        sparse_shape=(1600, 900, 1),  # Window partitioning is done in the image plane, so the sparse shape is the image size.
+        sparse_shape=(
+            9600,
+            900,
+            1,
+        ),  # Window partitioning is done in the image plane, so the sparse shape is the image size * number of cameras.
+        use_image_grouping=True,
+        image_size=(1600, 900),
+        camera_order=[0, 1, 5, 3, 4, 2],
         shuffle_voxels=True,
         debug=True,
         drop_info=drop_info,

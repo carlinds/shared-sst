@@ -10,12 +10,6 @@ log_config = dict(
         dict(type="TensorboardLoggerHook"),
         dict(
             type="WandbLoggerHook",
-            init_kwargs={
-                "project": "shared-sst",
-                "entity": "carlinds",
-                "group": "lidar-only-image-grouping",
-                "tags": ["full trainval"],
-            },
             interval=10,
         ),
     ],
