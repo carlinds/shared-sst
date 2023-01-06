@@ -100,35 +100,36 @@ class SharedSSTInputLayer(nn.Module):
             flat2win_inds_list: two dict containing transformation information for non-shifted grouping and shifted grouping, respectively. The two dicts are used in function flat2window and window2flat.
             voxel_info: dict containing extra information of each voxel for usage in the backbone.
         """
+        original_index = torch.arange(len(voxel_feats), device=voxel_feats.device)
 
+        self.set_drop_info()
+        
         if self.use_image_grouping:
             voxel_mean_2d_coords = self.get_voxel_mean_2d_coords(
                 voxel_coors, voxel_mean, img_metas, batch_size
             )
             voxel_mean_2d_coords = voxel_mean_2d_coords.long()
-            voxel_coors = voxel_coors.long()
-            voxel_info = self.window_partition(voxel_mean_2d_coords)
 
-        else:
-            voxel_coors = voxel_coors.long()
-            voxel_info = self.window_partition(voxel_coors)
+        voxel_coors = voxel_coors.long()
 
-        self.set_drop_info()
-
-        original_index = torch.arange(len(voxel_feats), device=voxel_feats.device)
         if self.shuffle_voxels:
             # shuffle the voxels to make the drop process uniform.
             shuffle_inds = torch.randperm(len(voxel_feats))
             voxel_feats = voxel_feats[shuffle_inds]
             voxel_coors = voxel_coors[shuffle_inds]
             original_index = original_index[shuffle_inds]
+            if self.use_image_grouping:
+                voxel_mean_2d_coords = voxel_mean_2d_coords[shuffle_inds]
+
+        if self.use_image_grouping:
+            voxel_info = self.window_partition(voxel_mean_2d_coords)
+        else:
+            voxel_info = self.window_partition(voxel_coors)
 
         voxel_info["voxel_feats"] = voxel_feats
         voxel_info["voxel_coors"] = voxel_coors
         voxel_info["original_index"] = original_index
-        voxel_info = self.drop_voxel(
-            voxel_info, 2
-        )  # voxel_info is updated in this function
+        voxel_info = self.drop_voxel(voxel_info, 2)  # voxel_info is updated in this function
 
         voxel_feats = voxel_info["voxel_feats"]  # after dropping
         voxel_coors = voxel_info["voxel_coors"]

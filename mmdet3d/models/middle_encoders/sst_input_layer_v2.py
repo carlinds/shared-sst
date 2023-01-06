@@ -1,16 +1,10 @@
 # move the computation of position embeding and mask in middle_encoder_layer
-import math
-import numpy as np
-
 import torch
 from mmcv.runner import auto_fp16
 from torch import nn
 
 from ..builder import MIDDLE_ENCODERS
-from mmdet3d.ops import flat2window_v2, window2flat_v2, get_inner_win_inds, make_continuous_inds, get_flat2win_inds_v2, get_window_coors
-import random
-import pickle as pkl
-import os
+from mmdet3d.ops import flat2window_v2, window2flat_v2, get_inner_win_inds, get_flat2win_inds_v2, get_window_coors
 
 @MIDDLE_ENCODERS.register_module()
 class SSTInputLayerV2(nn.Module):
