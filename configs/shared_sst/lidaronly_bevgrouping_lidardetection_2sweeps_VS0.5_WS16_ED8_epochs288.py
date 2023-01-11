@@ -6,7 +6,7 @@ _base_ = [
 ]
 
 voxel_size = (0.5, 0.5, 8)
-window_shape = (200, 200, 1)
+window_shape = (16, 16, 1)
 point_cloud_range = [-50, -50, -5, 50, 50, 3]
 encoder_blocks = 8
 drop_info_training = {
@@ -45,24 +45,20 @@ model = dict(
         point_cloud_range=point_cloud_range,
         norm_cfg=dict(type="naiveSyncBN1d", eps=1e-3, momentum=0.01),
     ),
-    patch_embedder=dict(
+    patch_embedder=dict( # Not used
         in_channels=3,
         embed_dims=96,
-        kernel_size=16, # patch size
+        kernel_size=16,
         stride=16,
     ),
     middle_encoder=dict(
         type="SharedSSTInputLayer",
         window_shape=window_shape,
-        sparse_shape=(
-            9600,
-            900,
-            1,
-        ),  # Window partitioning is done in the image plane, so the sparse shape is the image size * number of cameras.
-        use_image_grouping=True,
-        use_fused_input=True,
-        image_size=(1600, 900),
-        camera_order=[0, 1, 5, 3, 4, 2],
+        sparse_shape=(200, 200, 1),
+        use_image_grouping=False,
+        use_fused_input=False,
+        image_size=(1600, 900), # Not used
+        camera_order=[0, 1, 5, 3, 4, 2], # Not used
         shuffle_voxels=True,
         debug=True,
         drop_info=drop_info,
