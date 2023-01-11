@@ -149,7 +149,7 @@ class SharedFusionNet(VoxelNet):
 
     def get_patch_coors(unflattened_patches, patch_size):
         batch_size, height, width = unflattened_patches.shape[0], unflattened_patches.shape[1], unflattened_patches.shape[2]
-        patch_coors = torch.zeros((height * width * batch_size, batch_size))
+        patch_coors = torch.zeros((height * width * batch_size, 4))
 
         # Width indices
         patch_coors[:, 3] = torch.arange(width).repeat(height * batch_size)

@@ -60,6 +60,7 @@ model = dict(
             1,
         ),  # Window partitioning is done in the image plane, so the sparse shape is the image size * number of cameras.
         use_image_grouping=True,
+        use_fused_input=True,
         image_size=(1600, 900),
         camera_order=[0, 1, 5, 3, 4, 2],
         shuffle_voxels=True,
@@ -70,7 +71,7 @@ model = dict(
         mute=True,
     ),
     backbone=dict(
-        type="SSTv2",
+        type="SharedSST",
         d_model=[
             128,
         ]

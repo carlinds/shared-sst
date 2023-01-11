@@ -37,7 +37,7 @@ model = dict(
     voxel_encoder=dict(
         type="DynamicVFE",
         in_channels=4,
-        feat_channels=[8, 16],#[64, 128],
+        feat_channels=[4, 8],#[64, 128],
         with_distance=False,
         voxel_size=voxel_size,
         with_cluster_center=True,
@@ -47,7 +47,7 @@ model = dict(
     ),
     patch_embedder=dict(
         in_channels=3,
-        embed_dims=16,
+        embed_dims=8,
         kernel_size=64, # patch size
         stride=64,
     ),
@@ -71,9 +71,9 @@ model = dict(
         mute=True,
     ),
     backbone=dict(
-        type="SSTv2",
+        type="SharedSST",
         d_model=[
-            16,
+            8,
         ]
         * encoder_blocks,
         nhead=[
@@ -82,7 +82,7 @@ model = dict(
         * encoder_blocks,
         num_blocks=encoder_blocks,
         dim_feedforward=[
-            32,
+            8,
         ]
         * encoder_blocks,
         output_shape=[200, 200],  # tot_point_cloud_range / voxel_size (50+50)/0.5
@@ -92,8 +92,8 @@ model = dict(
             dict(kernel_size=3, dilation=1, padding=1, stride=1),
             dict(kernel_size=3, dilation=2, padding=2, stride=1),
         ],
-        conv_in_channel=16,
-        conv_out_channel=16,
+        conv_in_channel=8,
+        conv_out_channel=8,
         debug=True,
     ),
 )
@@ -104,8 +104,8 @@ checkpoint_config = dict(interval=6)
 
 fp16 = dict(loss_scale=32.0)
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
+    samples_per_gpu=2,
+    workers_per_gpu=1,
 )
 
 workflow = [

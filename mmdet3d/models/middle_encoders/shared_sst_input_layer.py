@@ -114,15 +114,15 @@ class SharedSSTInputLayer(nn.Module):
             voxel_mean_2d_coords = self.get_voxel_mean_2d_coords(
                 voxel_coors, voxel_mean, img_metas, batch_size
             )
-
-        # Add a modality info to indicate the modality of each feature. 0 for voxel features and 1 for patch features.
-        modality_info = torch.zeros((voxel_feats.shape[0], 1), dtype=torch.int32, device=voxel_feats.device)
         
         # Concatenate the voxel features and patch features.
         if self.use_image_grouping and self.use_fused_input:
             sst_feats = torch.cat([voxel_feats, patch_feats], dim=0)
             sst_coors = torch.cat([voxel_mean_2d_coords, patch_coors], dim=0)
-            modality_info = torch.cat([modality_info, torch.ones((patch_feats.shape[0], 1), dtype=torch.int32, device=voxel_feats.device)], dim=0)
+            
+            # Pad voxel coors to get correct shape when shuffling. -1 is used to indicate non-sense value.
+            # Used when recovering the BEV in the backbone to indicate modality (where every row with -1 will correspond to an image feature).
+            voxel_coors = torch.cat([voxel_coors, -1 * torch.ones((patch_feats.shape[0], 4), dtype=torch.int32, device=voxel_feats.device)])
 
         # Only use the voxel features, but perform window grouping in image space.
         elif self.use_image_grouping and not self.use_fused_input:
@@ -146,19 +146,16 @@ class SharedSSTInputLayer(nn.Module):
             shuffle_inds = torch.randperm(len(sst_feats))
             sst_feats = sst_feats[shuffle_inds]
             sst_coors = sst_coors[shuffle_inds]
-            modality_info = modality_info[shuffle_inds]
+            voxel_coors = voxel_coors[shuffle_inds]
             original_index = original_index[shuffle_inds]
             
         sst_info = self.window_partition(sst_coors)
         sst_info["sst_feats"] = sst_feats
         sst_info["sst_coors"] = sst_coors
-        sst_info["modality_info"] = modality_info
         sst_info["voxel_coors"] = voxel_coors
-        sst_info["original_index"] = original_index
         sst_info = self.drop_feature(sst_info, 2)  # sst_info is updated in this function
 
         sst_feats = sst_info["sst_feats"]  # after dropping
-        sst_coors = sst_info["sst_coors"]
 
         for i in range(2):
             # Dict where for each drop level we give a index to each token
@@ -182,9 +179,6 @@ class SharedSSTInputLayer(nn.Module):
             sst_info[f"key_mask_shift{i}"] = self.get_key_padding_mask(
                 sst_info[f"flat2win_inds_shift{i}"]
             )
-
-        if self.shuffle_voxels:
-            sst_info["shuffle_inds"] = shuffle_inds
 
         return sst_info
 
