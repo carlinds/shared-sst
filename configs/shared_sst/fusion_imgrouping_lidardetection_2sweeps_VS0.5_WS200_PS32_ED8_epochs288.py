@@ -1,14 +1,15 @@
 _base_ = [
     "../_base_/models/sst_base.py",
-    "../_base_/datasets/nus-3d-2sweep-remove_close_multi_modal_input_no_augs.py",
+    "../_base_/datasets/nus-3d-2sweep-remove_close_multi_modal_input.py",
     "../_base_/schedules/cosine_2x.py",
     "../_base_/default_runtime.py",
 ]
 
 voxel_size = (0.5, 0.5, 8)
 window_shape = (200, 200, 1)
+patch_size = 16
 point_cloud_range = [-50, -50, -5, 50, 50, 3]
-encoder_blocks = 2
+encoder_blocks = 8
 drop_info_training = {
     0: {"max_tokens": 30, "drop_range": (0, 30)},
     1: {"max_tokens": 60, "drop_range": (30, 60)},
@@ -37,7 +38,7 @@ model = dict(
     voxel_encoder=dict(
         type="DynamicVFE",
         in_channels=4,
-        feat_channels=[4, 8],#[64, 128],
+        feat_channels=[64, 128],
         with_distance=False,
         voxel_size=voxel_size,
         with_cluster_center=True,
@@ -47,9 +48,9 @@ model = dict(
     ),
     patch_embedder=dict(
         in_channels=3,
-        embed_dims=8,
-        kernel_size=64, # patch size
-        stride=64,
+        embed_dims=128,
+        kernel_size=patch_size,
+        stride=patch_size,
     ),
     middle_encoder=dict(
         type="SharedSSTInputLayer",
@@ -73,7 +74,7 @@ model = dict(
     backbone=dict(
         type="SharedSST",
         d_model=[
-            8,
+            128,
         ]
         * encoder_blocks,
         nhead=[
@@ -82,7 +83,7 @@ model = dict(
         * encoder_blocks,
         num_blocks=encoder_blocks,
         dim_feedforward=[
-            8,
+            256,
         ]
         * encoder_blocks,
         output_shape=[200, 200],  # tot_point_cloud_range / voxel_size (50+50)/0.5
@@ -92,8 +93,8 @@ model = dict(
             dict(kernel_size=3, dilation=1, padding=1, stride=1),
             dict(kernel_size=3, dilation=2, padding=2, stride=1),
         ],
-        conv_in_channel=8,
-        conv_out_channel=8,
+        conv_in_channel=128,
+        conv_out_channel=128,
         debug=True,
     ),
 )
@@ -104,8 +105,8 @@ checkpoint_config = dict(interval=6)
 
 fp16 = dict(loss_scale=32.0)
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=1,
+    samples_per_gpu=1,
+    workers_per_gpu=4,
 )
 
 workflow = [

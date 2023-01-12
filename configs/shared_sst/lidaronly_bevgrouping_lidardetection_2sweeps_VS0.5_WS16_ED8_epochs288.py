@@ -47,7 +47,7 @@ model = dict(
     ),
     patch_embedder=dict( # Not used
         in_channels=3,
-        embed_dims=96,
+        embed_dims=128,
         kernel_size=16,
         stride=16,
     ),

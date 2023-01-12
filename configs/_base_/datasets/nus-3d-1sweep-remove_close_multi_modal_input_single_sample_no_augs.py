@@ -1,7 +1,7 @@
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
 point_cloud_range = [-49.95, -49.95, -4.95, 49.95, 49.95, 2.95]
-number_of_sweeps = 1  # Extra sweeps to be merged. Max is 10.
+number_of_sweeps = 0  # Extra sweeps to be merged. Max is 10.
 # For nuScenes we usually do 10-class detection
 class_names = [
     "car",
@@ -51,17 +51,17 @@ train_pipeline = [
         test_mode=True,
     ),
     dict(type="LoadAnnotations3D", with_bbox_3d=True, with_label_3d=True),
-    dict(
-        type="GlobalRotScaleTrans",
-        rot_range=[-0.3925, 0.3925],
-        scale_ratio_range=[0.95, 1.05],
-        translation_std=[0, 0, 0],
-    ),
-    dict(type="RandomFlip3D", flip_ratio_bev_horizontal=0.5),
+    # dict(
+    #     type="GlobalRotScaleTrans",
+    #     rot_range=[-0.3925, 0.3925],
+    #     scale_ratio_range=[0.95, 1.05],
+    #     translation_std=[0, 0, 0],
+    # ),
+    # dict(type="RandomFlip3D", flip_ratio_bev_horizontal=0.5),
     dict(type="PointsRangeFilter", point_cloud_range=point_cloud_range),
     dict(type="ObjectRangeFilter", point_cloud_range=point_cloud_range),
     dict(type="ObjectNameFilter", classes=class_names),
-    dict(type="PointShuffle"),
+    # dict(type="PointShuffle"),
     dict(type="DefaultFormatBundle3D", class_names=class_names),
     dict(type="Collect3D", keys=["img", "points", "gt_bboxes_3d", "gt_labels_3d"]),
 ]
@@ -129,12 +129,12 @@ eval_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
+    samples_per_gpu=1,
+    workers_per_gpu=1,
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + "nuscenes_infos_train.pkl",
+        ann_file=data_root + "nuscenes_single_infos_train.pkl",
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -146,7 +146,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + "nuscenes_infos_val.pkl",
+        ann_file=data_root + "nuscenes_single_infos_train.pkl",
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -156,7 +156,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + "nuscenes_infos_val.pkl",
+        ann_file=data_root + "nuscenes_single_infos_train.pkl",
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

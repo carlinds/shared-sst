@@ -153,6 +153,7 @@ class SharedSSTInputLayer(nn.Module):
         sst_info["sst_feats"] = sst_feats
         sst_info["sst_coors"] = sst_coors
         sst_info["voxel_coors"] = voxel_coors
+        sst_info["original_index"] = original_index
         sst_info = self.drop_feature(sst_info, 2)  # sst_info is updated in this function
 
         sst_feats = sst_info["sst_feats"]  # after dropping

@@ -1,10 +1,30 @@
 import torch
+import numpy as np
 from mmcv.runner import force_fp32
 from torch.nn import functional as F
 
+from mmdet3d.core import bbox3d2result, merge_aug_bboxes_3d
 from mmdet.models import DETECTORS
 from .voxelnet import VoxelNet
 from ..model_utils.transformer import PatchEmbed
+
+def get_patch_coors(unflattened_patches, patch_size):
+    batch_size, height, width = unflattened_patches.shape[0], unflattened_patches.shape[1], unflattened_patches.shape[2]
+    patch_coors = torch.zeros((height * width * batch_size, 4), device=unflattened_patches.device)
+
+    # Width indices
+    patch_coors[:, 3] = torch.arange(width).repeat(height * batch_size)
+
+    # Height and batch indices
+    height_indices = np.repeat(np.arange(height), width)
+    for batch_index in range(batch_size):
+        patch_coors[batch_index * height * width : (batch_index + 1) * height * width, 0] = batch_index
+        patch_coors[batch_index * height * width : (batch_index + 1) * height * width, 2] = torch.from_numpy(height_indices)
+
+    # Scale to image size
+    patch_coors[:, 2] = patch_coors[:, 2] * patch_size + patch_size // 2
+    patch_coors[:, 3] = patch_coors[:, 3] * patch_size + patch_size // 2
+    return patch_coors
 
 
 @DETECTORS.register_module()
@@ -123,6 +143,47 @@ class SharedFusionNet(VoxelNet):
         losses = self.bbox_head.loss(*loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
         return losses
 
+    def extract_feats(self, points, img, img_metas):
+        """Extract features of multiple samples."""
+        return [
+            self.extract_feat(pts, im, img_meta)
+            for pts, im, img_meta in zip(points, img, img_metas)
+        ]
+
+    def simple_test(self, points, img, img_metas, rescale=False):
+        """Test function without augmentaiton."""
+        x = self.extract_feat(points, img, img_metas)
+        outs = self.bbox_head(x)
+        bbox_list = self.bbox_head.get_bboxes(*outs, img_metas, rescale=rescale)
+        bbox_results = [
+            bbox3d2result(bboxes, scores, labels)
+            for bboxes, scores, labels in bbox_list
+        ]
+        return bbox_results
+
+    def aug_test(self, points, img, img_metas, rescale=False):
+        """Test function with augmentaiton."""
+        feats = self.extract_feats(points, img, img_metas)
+
+        # only support aug_test for one sample
+        aug_bboxes = []
+        for x, img_meta in zip(feats, img_metas):
+            outs = self.bbox_head(x)
+            bbox_list = self.bbox_head.get_bboxes(*outs, img_meta, rescale=rescale)
+            bbox_list = [
+                dict(boxes_3d=bboxes, scores_3d=scores, labels_3d=labels)
+                for bboxes, scores, labels in bbox_list
+            ]
+            aug_bboxes.append(bbox_list[0])
+
+        # after merging, bboxes will be rescaled to the original image size
+        merged_bboxes = merge_aug_bboxes_3d(
+            aug_bboxes, img_metas, self.bbox_head.test_cfg
+        )
+
+        return [merged_bboxes]
+
+
     @torch.no_grad()
     @force_fp32()
     def voxelize(self, points):
@@ -146,21 +207,3 @@ class SharedFusionNet(VoxelNet):
             coors_batch.append(coor_pad)
         coors_batch = torch.cat(coors_batch, dim=0)
         return points, coors_batch
-
-    def get_patch_coors(unflattened_patches, patch_size):
-        batch_size, height, width = unflattened_patches.shape[0], unflattened_patches.shape[1], unflattened_patches.shape[2]
-        patch_coors = torch.zeros((height * width * batch_size, 4))
-
-        # Width indices
-        patch_coors[:, 3] = torch.arange(width).repeat(height * batch_size)
-
-        # Height and batch indices
-        height_indices = np.repeat(np.arange(height), width)
-        for batch_index in range(batch_size):
-            patch_coors[batch_index * height * width : (batch_index + 1) * height * width, 0] = batch_index
-            patch_coors[batch_index * height * width : (batch_index + 1) * height * width, 2] = torch.from_numpy(height_indices)
-
-        # Scale to image size
-        patch_coors[:, 2] = patch_coors[:, 2] * patch_size
-        patch_coors[:, 3] = patch_coors[:, 3] * patch_size
-        return patch_coors
